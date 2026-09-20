@@ -4,18 +4,15 @@ const { spawn } = require('child_process');
 const os = require('os');
 const readline = require('readline');
 
-// --- Configuration ---
 const MUSIC_DIR = path.join(__dirname, 'music');
 let PLAYER_COMMAND = '';
-
-// VLC Arguments updated to enable the Remote Control (rc) interface
 const PLAYER_ARGS = [
-    '-I', 'dummy',           // Headless mode
-    '--extraintf', 'rc',     // Enable Remote Control interface
-    '--rc-fake-tty',         // Force VLC to accept commands from Node's stdin
-    '--play-and-exit',       // Close when finished
-    '--novideo',             // Disable video
-    '--quiet'                // Suppress console output
+    '-I', 'dummy',      
+    '--extraintf', 'rc',
+    '--rc-fake-tty',         
+    '--play-and-exit',       
+    '--novideo',             
+    '--quiet'                
 ];
 
 switch (os.platform()) {
@@ -32,16 +29,12 @@ switch (os.platform()) {
         console.error('Unsupported OS');
         process.exit(1);
 }
-
-// --- Application State ---
 let playlist = [];
 let currentIndex = 0;
 let isPlaying = false;
 let isPaused = false;
 let audioProcess = null;
 let userTriggeredStop = false;
-
-// --- File Handling ---
 function loadPlaylist() {
     if (!fs.existsSync(MUSIC_DIR)) {
         fs.mkdirSync(MUSIC_DIR);
@@ -59,8 +52,6 @@ function loadPlaylist() {
         process.exit(0);
     }
 }
-
-// --- Process Management & Audio Controls ---
 function playSong(index) {
     if (audioProcess) {
         userTriggeredStop = true;

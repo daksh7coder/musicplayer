@@ -8,24 +8,25 @@ const readline = require('readline');
 const MUSIC_DIR = path.join(__dirname, 'music');
 let PLAYER_COMMAND = '';
 
-// Standard VLC headless arguments:
-// -I dummy: No graphical interface
-// --play-and-exit: Closes VLC when the song finishes (triggers our 'close' event)
-// --novideo: Disables video/album art window
-// --quiet: Suppresses VLC's console output
-const PLAYER_ARGS = ['-I', 'dummy', '--play-and-exit', '--novideo', '--quiet'];
+// VLC Arguments updated to enable the Remote Control (rc) interface
+const PLAYER_ARGS = [
+    '-I', 'dummy',           // Headless mode
+    '--extraintf', 'rc',     // Enable Remote Control interface
+    '--rc-fake-tty',         // Force VLC to accept commands from Node's stdin
+    '--play-and-exit',       // Close when finished
+    '--novideo',             // Disable video
+    '--quiet'                // Suppress console output
+];
 
-// Determine the VLC command based on the Operating System
 switch (os.platform()) {
-    case 'darwin': // macOS
-        // Use absolute path for Mac since VLC is rarely in the PATH by default
+    case 'darwin': 
         PLAYER_COMMAND = '/Applications/VLC.app/Contents/MacOS/VLC'; 
         break;
-    case 'linux': // Linux
-        PLAYER_COMMAND = 'cvlc'; // Console VLC
+    case 'linux': 
+        PLAYER_COMMAND = 'cvlc'; 
         break;
-    case 'win32': // Windows
-        PLAYER_COMMAND = 'vlc'; // Must be in Environment Variables PATH
+    case 'win32': 
+        PLAYER_COMMAND = 'vlc'; 
         break;
     default:
         console.error('Unsupported OS');
@@ -40,7 +41,7 @@ let isPaused = false;
 let audioProcess = null;
 let userTriggeredStop = false;
 
-// --- File Handling (Load Playlist) ---
+// --- File Handling ---
 function loadPlaylist() {
     if (!fs.existsSync(MUSIC_DIR)) {
         fs.mkdirSync(MUSIC_DIR);
@@ -48,7 +49,6 @@ function loadPlaylist() {
         process.exit(0);
     }
 
-    // VLC supports many formats, expanded the filter list here
     playlist = fs.readdirSync(MUSIC_DIR).filter(file => {
         const ext = path.extname(file).toLowerCase();
         return ['.mp3', '.wav', '.flac', '.ogg', '.m4a'].includes(ext);
@@ -80,20 +80,10 @@ function playSong(index) {
     // Spawn VLC child process
     audioProcess = spawn(PLAYER_COMMAND, [...PLAYER_ARGS, songPath]);
 
-    // Auto-play next song when VLC exits naturally
     audioProcess.on('close', (code) => {
         if (!userTriggeredStop && code === 0) {
             playSong(currentIndex + 1); 
         }
-    });
-
-    audioProcess.on('error', (err) => {
-        console.clear();
-        console.error(`\nError: Could not start VLC using command '${PLAYER_COMMAND}'.`);
-        if (os.platform() === 'win32') {
-            console.error(`Make sure VLC is installed and added to your Windows PATH.`);
-        }
-        process.exit(1);
     });
 
     drawUI();
@@ -101,22 +91,16 @@ function playSong(index) {
 
 function togglePause() {
     if (!audioProcess) return;
-
-    if (isPaused) {
-        // Send SIGCONT (Continue) signal
-        audioProcess.kill('SIGCONT');
-        isPaused = false;
-    } else {
-        // Send SIGSTOP signal to suspend process
-        audioProcess.kill('SIGSTOP');
-        isPaused = true;
-    }
+    audioProcess.stdin.write('pause\n');
+    
+    isPaused = !isPaused;
     drawUI();
 }
 
 function stopSong() {
     if (audioProcess) {
         userTriggeredStop = true;
+        audioProcess.stdin.write('quit\n');
         audioProcess.kill();
         audioProcess = null;
     }
@@ -125,7 +109,17 @@ function stopSong() {
     drawUI();
 }
 
-// --- CLI UI & Input Handling ---
+function adjustVolume(direction) {
+    if (!audioProcess) return;
+
+    if (direction === 'up') {
+        audioProcess.stdin.write('volup 2\n');
+    } else if (direction === 'down') {
+        audioProcess.stdin.write('voldown 2\n');
+    }
+}
+
+
 function drawUI() {
     console.clear();
     console.log('==================================');
@@ -146,6 +140,7 @@ function drawUI() {
     console.log('  [Space] Play / Pause');
     console.log('  [ N ]   Next Track');
     console.log('  [ P ]   Previous Track');
+    console.log('  [ + / - ] Volume Up / Down');
     console.log('  [ S ]   Stop');
     console.log('  [ Q ]   Quit');
     console.log('==================================');
@@ -184,10 +179,13 @@ function setupCLI() {
                 process.exit();
                 break;
         }
+        if (str === '+' || str === '=') {
+            adjustVolume('up');
+        } else if (str === '-') {
+            adjustVolume('down');
+        }
     });
 }
-
-// --- Initialization ---
 function init() {
     loadPlaylist();
     setupCLI();
